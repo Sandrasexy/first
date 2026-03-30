@@ -58,6 +58,23 @@ def main():
 
         print("Сессия активна!")
 
+        # Закрываем попап «Резюме стали компактнее» если появился
+        for selector in [
+            "button:has-text('Понятно')",
+            "button:has-text('Закрыть')",
+            "button.hh-modal-close",
+            "[data-qa='modal-close']",
+        ]:
+            try:
+                el = page.query_selector(selector)
+                if el and el.is_visible():
+                    el.evaluate("el => el.click()")
+                    print(f"  Закрыт попап (селектор: {selector})")
+                    time.sleep(1)
+                    break
+            except Exception:
+                pass
+
         # Ищем ссылки/кнопки поднятия резюме по тексту и data-qa
         raise_buttons = page.query_selector_all(
             "a:has-text('Поднять в поиске'), "
