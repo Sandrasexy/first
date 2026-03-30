@@ -20,6 +20,7 @@ def get_env(name: str) -> str:
 
 def main():
     hh_cookie = get_env("HH_COOKIE")
+    hh_xsrf = get_env("HH_XSRF")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -32,28 +33,32 @@ def main():
             viewport={"width": 1280, "height": 800},
         )
 
-        # Устанавливаем куки сессии
+        # Устанавливаем куки сессии (оба варианта домена)
         context.add_cookies([
-            {
-                "name": "_zzatgib-w-hh",
-                "value": hh_cookie,
-                "domain": ".hh.ru",
-                "path": "/",
-            }
+            {"name": "_zzatgib-w-hh", "value": hh_cookie, "domain": "hh.ru", "path": "/"},
+            {"name": "_zzatgib-w-hh", "value": hh_cookie, "domain": ".hh.ru", "path": "/"},
+            {"name": "_xsrf", "value": hh_xsrf, "domain": "hh.ru", "path": "/"},
+            {"name": "_xsrf", "value": hh_xsrf, "domain": ".hh.ru", "path": "/"},
         ])
 
         page = context.new_page()
 
-        # Проверяем что сессия работает
+        # Открываем страницу резюме
         print("Открываю hh.ru...")
         page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
         time.sleep(3)
         page.screenshot(path="login_page.png")
         print(f"URL: {page.url}")
 
-        # Если нас перебросило на логин — куки устарели
-        if "login" in page.url or "account/login" in page.url:
-            print("Ошибка: сессия истекла. Обнови значение HH_COOKIE в GitHub Secrets.")
+        # Проверяем авторизацию по наличию раздела «Мои резюме»
+        page_text = page.inner_text("body")
+        if "Мои резюме" not in page_text and "резюме" not in page_text.lower():
+            print("Ошибка: сессия не активна. Обнови HH_COOKIE и HH_XSRF в GitHub Secrets.")
+            browser.close()
+            sys.exit(1)
+
+        if "Войдите на сайт" in page_text or "Войдите" in page_text[:500]:
+            print("Ошибка: сессия истекла. Обнови HH_COOKIE и HH_XSRF в GitHub Secrets.")
             browser.close()
             sys.exit(1)
 
