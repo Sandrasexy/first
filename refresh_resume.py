@@ -116,12 +116,8 @@ def main():
 
         print()
 
-        # ── Поднимаем резюме ──────────────────────────────────────────────
-        # Playwright находит элементы надёжнее чем JS querySelector
-        raise_buttons = page.query_selector_all(
-            "a:has-text('Поднять в поиске'), "
-            "button:has-text('Поднять в поиске')"
-        )
+        # ── Поднимаем резюме через перехват AJAX-запроса ─────────────────
+        raise_buttons = page.query_selector_all("[data-qa='resume-update-button']")
 
         if not raise_buttons:
             print("Кнопок «Поднять в поиске» не найдено — резюме уже подняты или недоступны.")
@@ -131,31 +127,62 @@ def main():
 
         print(f"Найдено кнопок для поднятия: {len(raise_buttons)}")
         success = 0
+
         for i, btn in enumerate(raise_buttons, 1):
-            try:
-                # Скроллим к элементу и получаем его координаты
-                btn.scroll_into_view_if_needed()
-                time.sleep(0.5)
-                box = btn.bounding_box()
-                print(f"  Кнопка {i}: bounding_box={box}")
-                if box and box["width"] > 0 and box["height"] > 0:
-                    cx = box["x"] + box["width"] / 2
-                    cy = box["y"] + box["height"] / 2
-                    print(f"  Кликаю мышью в точку ({cx:.0f}, {cy:.0f})")
-                    page.mouse.click(cx, cy)
-                    time.sleep(3)
-                    print(f"  URL после клика: {page.url}")
-                    if "/applicant/resumes" not in page.url:
-                        page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
-                        time.sleep(2)
-                    success += 1
-                else:
-                    print(f"  Кнопка {i}: нет координат, пропускаю")
-            except Exception as e:
-                print(f"  Ошибка: {e}")
+            print(f"  Кнопка {i}: кликаю и слушаю запросы...")
+            captured = []
+
+            def on_request(req):
+                if req.method in ("POST", "PUT") and "hh.ru" in req.url:
+                    captured.append({"method": req.method, "url": req.url})
+                    print(f"    → {req.method} {req.url}")
+
+            page.on("request", on_request)
+
+            btn.scroll_into_view_if_needed()
+            time.sleep(0.3)
+            box = btn.bounding_box()
+            if box:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            else:
+                btn.dispatch_event("click")
+            time.sleep(3)
+
+            page.remove_listener("request", on_request)
+
+            if captured:
+                print(f"    Перехвачено запросов: {len(captured)}")
+            else:
+                print("    Запросов после клика не было — пробуем прямой API вызов")
+                # Пробуем поднять через API напрямую
+                # Получаем resume_id из data-qa или ссылки на странице
+                resume_id = btn.evaluate("""el => {
+                    const card = el.closest('[data-qa*="resume"]') || el.closest('[class*="resume"]');
+                    if (!card) return null;
+                    const link = card.querySelector('a[href*="/resume/"]');
+                    if (link) {
+                        const m = link.href.match(/resume\\/([^?#]+)/);
+                        return m ? m[1] : null;
+                    }
+                    return null;
+                }""")
+                print(f"    resume_id={resume_id}")
+
+                if resume_id:
+                    result = page.evaluate(f"""async () => {{
+                        const r = await fetch('/applicant/resumes/touch', {{
+                            method: 'POST',
+                            headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
+                            body: 'resume={resume_id}'
+                        }});
+                        return {{ status: r.status, url: r.url }};
+                    }}""")
+                    print(f"    API ответ: {result}")
+
+            success += 1
 
         page.screenshot(path="login_page.png")
-        print(f"\nГотово! Поднято резюме: {success}")
+        print(f"\nГотово! Обработано резюме: {success}")
         browser.close()
 
 
