@@ -1,18 +1,12 @@
 """
-Скрипт автоматически поднимает все резюме на hh.ru.
+Скрипт автоматически поднимает все резюме на hh.ru через браузер.
 Запускается через GitHub Actions каждые 4 часа.
 """
 
 import os
 import sys
-import json
-import base64
-import requests
-from nacl import encoding, public
-
-
-HH_API = "https://api.hh.ru"
-HH_TOKEN_URL = "https://hh.ru/oauth/token"
+import time
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 
 def get_env(name: str) -> str:
@@ -23,134 +17,101 @@ def get_env(name: str) -> str:
     return value
 
 
-def refresh_access_token(client_id: str, client_secret: str, refresh_token: str) -> dict:
-    """Обновляет access_token используя refresh_token."""
-    print("Обновляю access_token...")
-    response = requests.post(
-        HH_TOKEN_URL,
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": client_id,
-            "client_secret": client_secret,
-        },
-    )
-    if response.status_code != 200:
-        print(f"Не удалось обновить токен: {response.status_code} {response.text}")
-        sys.exit(1)
-    data = response.json()
-    print("Токен успешно обновлён.")
-    return data
-
-
-def update_github_secret(repo: str, token: str, secret_name: str, secret_value: str):
-    """Обновляет секрет в GitHub репозитории."""
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-
-    # Получаем публичный ключ репозитория для шифрования секрета
-    key_response = requests.get(
-        f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
-        headers=headers,
-    )
-    if key_response.status_code != 200:
-        print(f"Не удалось получить ключ GitHub: {key_response.text}")
-        return
-
-    key_data = key_response.json()
-    public_key = public.PublicKey(key_data["key"].encode(), encoding.Base64Encoder)
-    sealed_box = public.SealedBox(public_key)
-    encrypted = base64.b64encode(sealed_box.encrypt(secret_value.encode())).decode()
-
-    put_response = requests.put(
-        f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}",
-        headers=headers,
-        json={"encrypted_value": encrypted, "key_id": key_data["key_id"]},
-    )
-
-    if put_response.status_code in (201, 204):
-        print(f"Секрет {secret_name} обновлён в GitHub.")
-    else:
-        print(f"Не удалось обновить секрет {secret_name}: {put_response.text}")
-
-
-def get_resumes(access_token: str) -> list:
-    """Получает список резюме пользователя."""
-    response = requests.get(
-        f"{HH_API}/resumes/mine",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    if response.status_code == 403:
-        return None  # Токен устарел
-    response.raise_for_status()
-    return response.json().get("items", [])
-
-
-def publish_resume(access_token: str, resume_id: str) -> bool:
-    """Поднимает одно резюме. Возвращает False если токен устарел."""
-    response = requests.post(
-        f"{HH_API}/resumes/{resume_id}/publish",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    if response.status_code == 403:
-        return False  # Токен устарел
-    if response.status_code == 429:
-        print(f"  Резюме {resume_id}: слишком частое поднятие, пропускаем.")
-        return True
-    if response.status_code not in (200, 204):
-        print(f"  Резюме {resume_id}: ошибка {response.status_code} {response.text}")
-        return True
-    return True
-
-
 def main():
-    client_id = get_env("HH_CLIENT_ID")
-    client_secret = get_env("HH_CLIENT_SECRET")
-    access_token = get_env("HH_ACCESS_TOKEN")
-    refresh_token = get_env("HH_REFRESH_TOKEN")
-    github_repo = os.environ.get("GITHUB_REPOSITORY", "")
-    github_token = os.environ.get("GH_PAT", "")
+    email = get_env("HH_EMAIL")
+    password = get_env("HH_PASSWORD")
 
-    print("Получаю список резюме...")
-    resumes = get_resumes(access_token)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
+        )
+        page = context.new_page()
 
-    # Если токен устарел — обновляем
-    if resumes is None:
-        new_tokens = refresh_access_token(client_id, client_secret, refresh_token)
-        access_token = new_tokens["access_token"]
-        refresh_token = new_tokens["refresh_token"]
+        # --- Авторизация ---
+        print("Открываю страницу входа...")
+        page.goto("https://hh.ru/account/login?backurl=%2F", wait_until="networkidle")
+        time.sleep(2)
 
-        # Сохраняем новые токены в GitHub Secrets
-        if github_repo and github_token:
-            update_github_secret(github_repo, github_token, "HH_ACCESS_TOKEN", access_token)
-            update_github_secret(github_repo, github_token, "HH_REFRESH_TOKEN", refresh_token)
-        else:
-            print("Предупреждение: GH_PAT не задан, новые токены не сохранены в GitHub.")
-            print("Добавьте GH_PAT в секреты GitHub для автоматического обновления токенов.")
+        # Выбираем вход по паролю (не через соцсети)
+        try:
+            page.click("button[data-qa='expand-login-by-password']", timeout=5000)
+            time.sleep(1)
+        except PlaywrightTimeout:
+            pass  # Кнопка могла уже быть активна
 
-        resumes = get_resumes(access_token)
+        print("Вввожу логин и пароль...")
+        page.fill("input[data-qa='login-input-username']", email)
+        page.fill("input[data-qa='login-input-password']", password)
+        page.click("button[data-qa='account-login-submit']")
 
-    if not resumes:
-        print("Резюме не найдены.")
-        return
+        # Ждём загрузки главной страницы
+        try:
+            page.wait_for_url("https://hh.ru/", timeout=15000)
+        except PlaywrightTimeout:
+            # Проверяем не появилась ли капча или ошибка
+            if "login" in page.url:
+                print("Ошибка: не удалось войти. Проверьте HH_EMAIL и HH_PASSWORD.")
+                print(f"Текущий URL: {page.url}")
+                browser.close()
+                sys.exit(1)
 
-    print(f"Найдено резюме: {len(resumes)}")
-    print()
+        print(f"Вошёл успешно. Текущая страница: {page.url}")
 
-    for resume in resumes:
-        resume_id = resume["id"]
-        title = resume.get("title", "Без названия")
-        print(f"Поднимаю: «{title}» (id: {resume_id})")
-        success = publish_resume(access_token, resume_id)
-        if not success:
-            print("Токен снова устарел. Проверьте настройки.")
-            sys.exit(1)
-        print(f"  ✓ Поднято успешно")
+        # --- Переходим к резюме ---
+        print("\nОткрываю страницу резюме...")
+        page.goto("https://hh.ru/applicant/resumes", wait_until="networkidle")
+        time.sleep(2)
 
-    print()
-    print("Готово! Все резюме подняты.")
+        # Ищем все кнопки "Поднять в поиске" / "Обновить дату"
+        raise_buttons = page.query_selector_all(
+            "button[data-qa='resume-raise-button'], "
+            "button[data-qa='resume-update-button']"
+        )
+
+        if not raise_buttons:
+            # Пробуем альтернативный селектор
+            raise_buttons = page.query_selector_all(
+                "[data-qa*='raise'], [data-qa*='update-date']"
+            )
+
+        if not raise_buttons:
+            print("Кнопки поднятия не найдены.")
+            print("Возможно, резюме уже были подняты недавно или изменился интерфейс hh.ru.")
+            browser.close()
+            return
+
+        print(f"Найдено кнопок для поднятия: {len(raise_buttons)}")
+
+        for i, button in enumerate(raise_buttons, 1):
+            try:
+                button_text = button.inner_text().strip()
+                print(f"Нажимаю кнопку {i}: «{button_text}»")
+                button.click()
+                time.sleep(2)
+
+                # Закрываем модальное окно подтверждения если появилось
+                try:
+                    confirm = page.query_selector(
+                        "button[data-qa='resume-raise-confirm'], "
+                        "[data-qa='modal-confirm-button']"
+                    )
+                    if confirm:
+                        confirm.click()
+                        time.sleep(1)
+                except Exception:
+                    pass
+
+                print(f"  Поднято успешно")
+            except Exception as e:
+                print(f"  Ошибка при нажатии кнопки {i}: {e}")
+
+        print("\nГотово! Все резюме подняты.")
+        browser.close()
 
 
 if __name__ == "__main__":

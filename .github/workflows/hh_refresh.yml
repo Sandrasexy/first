@@ -22,12 +22,11 @@ jobs:
       - name: Установить зависимости
         run: pip install -r requirements.txt
 
+      - name: Установить браузер Playwright
+        run: playwright install chromium --with-deps
+
       - name: Поднять резюме
         env:
-          HH_CLIENT_ID: ${{ secrets.HH_CLIENT_ID }}
-          HH_CLIENT_SECRET: ${{ secrets.HH_CLIENT_SECRET }}
-          HH_ACCESS_TOKEN: ${{ secrets.HH_ACCESS_TOKEN }}
-          HH_REFRESH_TOKEN: ${{ secrets.HH_REFRESH_TOKEN }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          HH_EMAIL: ${{ secrets.HH_EMAIL }}
+          HH_PASSWORD: ${{ secrets.HH_PASSWORD }}
         run: python refresh_resume.py
