@@ -117,50 +117,42 @@ def main():
         print()
 
         # ── Поднимаем резюме ──────────────────────────────────────────────
-        # Ищем ссылку «Поднять в поиске» через JS по тексту
-        raised = page.evaluate("""
-            () => {
-                const links = Array.from(document.querySelectorAll('a, button'));
-                const targets = links.filter(el =>
-                    el.textContent.trim() === 'Поднять в поиске'
-                );
-                if (targets.length === 0) return { count: 0, found: [] };
+        # Playwright находит элементы надёжнее чем JS querySelector
+        raise_buttons = page.query_selector_all(
+            "a:has-text('Поднять в поиске'), "
+            "button:has-text('Поднять в поиске')"
+        )
 
-                const found = [];
-                targets.forEach(el => {
-                    // Получаем координаты центра элемента
-                    const rect = el.getBoundingClientRect();
-                    // Скроллим к элементу
-                    el.scrollIntoView({ block: 'center' });
-                    const rect2 = el.getBoundingClientRect();
-                    found.push({
-                        x: rect2.left + rect2.width / 2,
-                        y: rect2.top + rect2.height / 2,
-                        text: el.textContent.trim()
-                    });
-                });
-                return { count: targets.length, found };
-            }
-        """)
-
-        if raised["count"] == 0:
+        if not raise_buttons:
             print("Кнопок «Поднять в поиске» не найдено — резюме уже подняты или недоступны.")
             page.screenshot(path="login_page.png")
             browser.close()
             return
 
-        print(f"Найдено кнопок для поднятия: {raised['count']}")
+        print(f"Найдено кнопок для поднятия: {len(raise_buttons)}")
         success = 0
-        for item in raised["found"]:
-            print(f"  Кликаю по «{item['text']}» в координатах ({item['x']:.0f}, {item['y']:.0f})")
-            # Реальный клик мышью по координатам
-            page.mouse.click(item["x"], item["y"])
-            time.sleep(3)
-            print(f"  URL после клика: {page.url}")
-            if "/applicant/resumes" not in page.url:
-                page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
-                time.sleep(2)
-            success += 1
+        for i, btn in enumerate(raise_buttons, 1):
+            try:
+                # Скроллим к элементу и получаем его координаты
+                btn.scroll_into_view_if_needed()
+                time.sleep(0.5)
+                box = btn.bounding_box()
+                print(f"  Кнопка {i}: bounding_box={box}")
+                if box and box["width"] > 0 and box["height"] > 0:
+                    cx = box["x"] + box["width"] / 2
+                    cy = box["y"] + box["height"] / 2
+                    print(f"  Кликаю мышью в точку ({cx:.0f}, {cy:.0f})")
+                    page.mouse.click(cx, cy)
+                    time.sleep(3)
+                    print(f"  URL после клика: {page.url}")
+                    if "/applicant/resumes" not in page.url:
+                        page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
+                        time.sleep(2)
+                    success += 1
+                else:
+                    print(f"  Кнопка {i}: нет координат, пропускаю")
+            except Exception as e:
+                print(f"  Ошибка: {e}")
 
         page.screenshot(path="login_page.png")
         print(f"\nГотово! Поднято резюме: {success}")
