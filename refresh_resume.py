@@ -17,30 +17,9 @@ def get_env(name: str) -> str:
     return value
 
 
-def try_fill(page, selectors: list, value: str, label: str):
-    """Пробует заполнить поле по списку селекторов."""
-    for selector in selectors:
-        try:
-            page.wait_for_selector(selector, timeout=5000)
-            page.fill(selector, value)
-            print(f"  Поле «{label}» заполнено (селектор: {selector})")
-            return True
-        except PlaywrightTimeout:
-            continue
-    return False
-
-
-def try_click(page, selectors: list, label: str):
-    """Пробует нажать кнопку по списку селекторов."""
-    for selector in selectors:
-        try:
-            page.wait_for_selector(selector, timeout=5000)
-            page.click(selector)
-            print(f"  Нажата кнопка «{label}» (селектор: {selector})")
-            return True
-        except PlaywrightTimeout:
-            continue
-    return False
+def screenshot(page, label: str):
+    page.screenshot(path="login_page.png")
+    print(f"[скриншот] {label} | URL: {page.url}")
 
 
 def main():
@@ -49,119 +28,136 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
+        page = browser.new_page(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": 390, "height": 844},  # мобильный viewport как у скриншота
         )
-        page = context.new_page()
 
-        # --- Авторизация ---
+        # ── Шаг 1: открываем страницу входа ──────────────────────────────
         print("Открываю страницу входа...")
         page.goto("https://hh.ru/account/login", wait_until="domcontentloaded")
         time.sleep(3)
+        screenshot(page, "начало")
 
-        # Скриншот для отладки
-        page.screenshot(path="login_page.png")
-        print(f"Скриншот сохранён: login_page.png (URL: {page.url})")
-
-        # Шаг 1: выбираем «Я ищу работу» и нажимаем «Войти»
-        applicant_clicked = try_click(page, [
-            "[data-qa='login-applicant-button']",
-            "text=Я ищу работу",
-        ], "Я ищу работу")
-
-        if applicant_clicked:
+        # ── Шаг 2: выбираем «Я ищу работу» ──────────────────────────────
+        try:
+            page.wait_for_selector("text=Я ищу работу", timeout=5000)
+            page.click("text=Я ищу работу")
+            print("  Выбрано: Я ищу работу")
             time.sleep(1)
-            try_click(page, [
-                "button:has-text('Войти')",
-                "text=Войти",
-            ], "Войти")
+        except PlaywrightTimeout:
+            print("  Экран выбора типа не найден, продолжаем...")
+
+        # ── Шаг 3: нажимаем «Войти» ──────────────────────────────────────
+        try:
+            page.wait_for_selector("button:has-text('Войти')", timeout=5000)
+            page.click("button:has-text('Войти')")
+            print("  Нажато: Войти")
             time.sleep(2)
-            page.screenshot(path="login_page.png")
-            print(f"После выбора типа аккаунта URL: {page.url}")
+            screenshot(page, "после Войти")
+        except PlaywrightTimeout:
+            print("  Кнопка Войти не найдена, продолжаем...")
 
-        # Нажимаем «Войти с паролем» чтобы появились поля email и пароля
-        try_click(page, [
-            "text=Войти с паролем",
-            "[data-qa='login-by-password']",
-            "a:has-text('Войти с паролем')",
-        ], "Войти с паролем")
-        time.sleep(2)
-        page.screenshot(path="login_page.png")
-        print(f"После нажатия «Войти с паролем» URL: {page.url}")
+        # ── Шаг 4: переключаемся на вкладку «Почта» ──────────────────────
+        try:
+            page.wait_for_selector("text=Почта", timeout=5000)
+            page.click("text=Почта")
+            print("  Выбрана вкладка: Почта")
+            time.sleep(1)
+            screenshot(page, "после выбора Почта")
+        except PlaywrightTimeout:
+            print("  Вкладка Почта не найдена, продолжаем...")
 
-        # Заполняем логин (email)
-        login_filled = try_fill(page, [
-            "input[data-qa='login-input-username']",
-            "input[name='login']",
+        # ── Шаг 5: вводим email ───────────────────────────────────────────
+        email_selectors = [
             "input[type='email']",
-            "input[autocomplete='username']",
+            "input[name='login']",
             "input[autocomplete='email']",
-        ], email, "логин")
+            "input[autocomplete='username']",
+            "input[data-qa='login-input-username']",
+        ]
+        email_filled = False
+        for sel in email_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=4000)
+                page.fill(sel, email)
+                print(f"  Email введён (селектор: {sel})")
+                email_filled = True
+                break
+            except PlaywrightTimeout:
+                continue
 
-        if not login_filled:
-            page.screenshot(path="login_page.png")
-            print("Не удалось найти поле логина. Смотри скриншот login_page.png")
+        if not email_filled:
+            screenshot(page, "email не найден")
+            print("Не удалось найти поле email. Смотри скриншот.")
             browser.close()
             sys.exit(1)
 
-        # Заполняем пароль
-        password_filled = try_fill(page, [
-            "input[data-qa='login-input-password']",
-            "input[name='password']",
-            "input[type='password']",
-            "input[autocomplete='current-password']",
-        ], password, "пароль")
-
-        if not password_filled:
-            # Возможно, пароль на следующем шаге — нажимаем «Продолжить»
-            try_click(page, [
-                "button[data-qa='account-login-submit']",
-                "button[type='submit']",
-                "input[type='submit']",
-            ], "продолжить")
+        # ── Шаг 6: нажимаем «Дальше» ─────────────────────────────────────
+        try:
+            page.wait_for_selector("button:has-text('Дальше')", timeout=5000)
+            page.click("button:has-text('Дальше')")
+            print("  Нажато: Дальше")
             time.sleep(2)
-            page.screenshot(path="login_page.png")
+            screenshot(page, "после Дальше")
+        except PlaywrightTimeout:
+            print("  Кнопка Дальше не найдена, пробуем сразу искать пароль...")
 
-            password_filled = try_fill(page, [
-                "input[data-qa='login-input-password']",
-                "input[name='password']",
-                "input[type='password']",
-            ], password, "пароль (шаг 2)")
+        # ── Шаг 7: вводим пароль ─────────────────────────────────────────
+        password_selectors = [
+            "input[type='password']",
+            "input[name='password']",
+            "input[autocomplete='current-password']",
+            "input[data-qa='login-input-password']",
+        ]
+        password_filled = False
+        for sel in password_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=6000)
+                page.fill(sel, password)
+                print(f"  Пароль введён (селектор: {sel})")
+                password_filled = True
+                break
+            except PlaywrightTimeout:
+                continue
 
         if not password_filled:
-            print("Не удалось найти поле пароля. Смотри скриншот login_page.png")
+            screenshot(page, "пароль не найден")
+            print("Не удалось найти поле пароля. Смотри скриншот.")
             browser.close()
             sys.exit(1)
 
-        # Нажимаем войти
-        submitted = try_click(page, [
-            "button[data-qa='account-login-submit']",
+        # ── Шаг 8: нажимаем «Войти» (финальная кнопка) ───────────────────
+        submit_selectors = [
+            "button:has-text('Войти')",
             "button[type='submit']",
             "input[type='submit']",
-        ], "войти")
-
-        if not submitted:
-            print("Не удалось найти кнопку входа.")
-            browser.close()
-            sys.exit(1)
+            "button[data-qa='account-login-submit']",
+        ]
+        for sel in submit_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=4000)
+                page.click(sel)
+                print(f"  Нажата кнопка входа (селектор: {sel})")
+                break
+            except PlaywrightTimeout:
+                continue
 
         time.sleep(4)
-        page.screenshot(path="login_page.png")
-        print(f"После входа URL: {page.url}")
+        screenshot(page, "после входа")
 
-        if "login" in page.url or "account" in page.url:
+        if "login" in page.url or "/account" in page.url:
             print("Ошибка: не удалось войти. Проверьте HH_EMAIL и HH_PASSWORD.")
             browser.close()
             sys.exit(1)
 
         print("Вошёл успешно!")
 
-        # --- Переходим к резюме ---
+        # ── Поднимаем резюме ──────────────────────────────────────────────
         print("\nОткрываю страницу резюме...")
         page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
         time.sleep(3)
@@ -174,7 +170,7 @@ def main():
         )
 
         if not raise_buttons:
-            print("Кнопки поднятия не найдены — резюме уже подняты недавно или ещё не опубликованы.")
+            print("Кнопки поднятия не найдены — резюме уже подняты недавно или не опубликованы.")
             browser.close()
             return
 
@@ -196,7 +192,7 @@ def main():
                         time.sleep(1)
                 except Exception:
                     pass
-                print(f"  Поднято успешно")
+                print("  Поднято успешно")
             except Exception as e:
                 print(f"  Ошибка: {e}")
 
