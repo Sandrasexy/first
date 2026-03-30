@@ -30,3 +30,11 @@ jobs:
           HH_EMAIL: ${{ secrets.HH_EMAIL }}
           HH_PASSWORD: ${{ secrets.HH_PASSWORD }}
         run: python refresh_resume.py
+
+      - name: Сохранить скриншот для отладки
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: login_page.png
+          if-no-files-found: ignore
