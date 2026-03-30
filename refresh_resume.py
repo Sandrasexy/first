@@ -150,25 +150,28 @@ def main():
         success = 0
         for resume_id in resume_ids:
             endpoints = [
-                f"/applicant/resumes/touch?resume={resume_id}",
-                f"/resume/{resume_id}/touch",
-                f"/applicant/resume/{resume_id}/publish",
+                "/applicant/resumes/touch?resume=" + resume_id,
+                "/resume/" + resume_id + "/touch",
+                "/applicant/resume/" + resume_id + "/publish",
             ]
             for ep in endpoints:
-                result = page.evaluate(f"""async () => {{
-                    try {{
-                        const r = await fetch('{ep}', {{
+                js = """
+                async (ep) => {
+                    try {
+                        const r = await fetch(ep, {
                             method: 'POST',
                             credentials: 'include',
-                            headers: {{
+                            headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded',
                                 'X-Requested-With': 'XMLHttpRequest'
-                            }}
-                        }});
+                            }
+                        });
                         const text = await r.text();
-                        return {{ status: r.status, url: r.url, body: text.slice(0, 200) }};
-                    }} catch(e) {{ return {{ error: e.message }}};
-                }}""")
+                        return { status: r.status, url: r.url, body: text.slice(0, 200) };
+                    } catch(e) { return { error: e.message }; }
+                }
+                """
+                result = page.evaluate(js, ep)
                 print(f"  {ep} → {result}")
                 if isinstance(result, dict) and result.get("status") in (200, 204):
                     print(f"  Поднято резюме {resume_id}!")
