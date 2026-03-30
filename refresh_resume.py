@@ -59,21 +59,36 @@ def main():
         print("Сессия активна!")
 
         # Закрываем попап «Резюме стали компактнее» если появился
-        for selector in [
+        # Сначала пробуем Escape
+        page.keyboard.press("Escape")
+        time.sleep(1)
+
+        # Затем ищем любую кнопку закрытия попапа
+        close_selectors = [
             "button:has-text('Понятно')",
             "button:has-text('Закрыть')",
-            "button.hh-modal-close",
-            "[data-qa='modal-close']",
-        ]:
+            "[aria-label='Закрыть']",
+            "button[data-qa='modal-close']",
+            "button.bloko-modal-close",
+            # крестик × в правом верхнем углу попапа
+            "svg[aria-label='close']",
+            "[class*='close']",
+            "[class*='modal'] button",
+        ]
+        for selector in close_selectors:
             try:
-                el = page.query_selector(selector)
-                if el and el.is_visible():
-                    el.evaluate("el => el.click()")
-                    print(f"  Закрыт попап (селектор: {selector})")
-                    time.sleep(1)
-                    break
+                els = page.query_selector_all(selector)
+                for el in els:
+                    if el.is_visible():
+                        el.evaluate("el => el.click()")
+                        print(f"  Закрыт попап (селектор: {selector})")
+                        time.sleep(1)
+                        break
             except Exception:
                 pass
+
+        page.screenshot(path="login_page.png")
+        print("Скриншот после закрытия попапа сохранён")
 
         # Ищем ссылки/кнопки поднятия резюме по тексту и data-qa
         raise_buttons = page.query_selector_all(
