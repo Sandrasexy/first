@@ -84,13 +84,23 @@ def main():
             page.screenshot(path="login_page.png")
             print(f"После выбора типа аккаунта URL: {page.url}")
 
-        # Заполняем логин
+        # Нажимаем «Войти с паролем» чтобы появились поля email и пароля
+        try_click(page, [
+            "text=Войти с паролем",
+            "[data-qa='login-by-password']",
+            "a:has-text('Войти с паролем')",
+        ], "Войти с паролем")
+        time.sleep(2)
+        page.screenshot(path="login_page.png")
+        print(f"После нажатия «Войти с паролем» URL: {page.url}")
+
+        # Заполняем логин (email)
         login_filled = try_fill(page, [
             "input[data-qa='login-input-username']",
             "input[name='login']",
             "input[type='email']",
             "input[autocomplete='username']",
-            "input[placeholder*='айл']",
+            "input[autocomplete='email']",
         ], email, "логин")
 
         if not login_filled:
