@@ -68,20 +68,21 @@ def main():
         page.screenshot(path="login_page.png")
         print(f"Скриншот сохранён: login_page.png (URL: {page.url})")
 
-        # Закрываем попап/куки если есть
-        try_click(page, [
-            "button[data-qa='cookie-agreement-button']",
-            "[data-qa='noauth-popup-close']",
-            "button.bloko-modal-close",
-        ], "закрыть попап")
+        # Шаг 1: выбираем «Я ищу работу» и нажимаем «Войти»
+        applicant_clicked = try_click(page, [
+            "[data-qa='login-applicant-button']",
+            "text=Я ищу работу",
+        ], "Я ищу работу")
 
-        # Переключаемся на вход по паролю (если есть такая кнопка)
-        try_click(page, [
-            "button[data-qa='expand-login-by-password']",
-            "a[data-qa='login-by-password']",
-            "[data-hh-tab='byPassword']",
-        ], "войти по паролю")
-        time.sleep(1)
+        if applicant_clicked:
+            time.sleep(1)
+            try_click(page, [
+                "button:has-text('Войти')",
+                "text=Войти",
+            ], "Войти")
+            time.sleep(2)
+            page.screenshot(path="login_page.png")
+            print(f"После выбора типа аккаунта URL: {page.url}")
 
         # Заполняем логин
         login_filled = try_fill(page, [
@@ -89,7 +90,7 @@ def main():
             "input[name='login']",
             "input[type='email']",
             "input[autocomplete='username']",
-            "input[placeholder*='айл']",   # «email» или «мобильный»
+            "input[placeholder*='айл']",
         ], email, "логин")
 
         if not login_filled:
