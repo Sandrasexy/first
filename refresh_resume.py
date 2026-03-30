@@ -17,20 +17,44 @@ def get_env(name: str) -> str:
     return value
 
 
+def parse_cookies(cookie_string: str) -> list:
+    """Парсит строку Cookie-заголовка в список для context.add_cookies()."""
+    cookies = []
+    for pair in cookie_string.split(";"):
+        pair = pair.strip()
+        if "=" in pair:
+            name, value = pair.split("=", 1)
+            name = name.strip()
+            value = value.strip()
+            if name:
+                # Пробуем оба варианта домена
+                for domain in [".hh.ru", "hh.ru"]:
+                    cookies.append({
+                        "name": name,
+                        "value": value,
+                        "domain": domain,
+                        "path": "/",
+                    })
+    return cookies
+
+
 def main():
     hh_cookie = get_env("HH_COOKIE")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(
+        context = browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            viewport={"width": 1280, "height": 3000},  # высокий viewport — всё видно
-            extra_http_headers={"Cookie": hh_cookie},
+            viewport={"width": 1280, "height": 3000},
         )
+        # Устанавливаем куки в браузерный cookie jar (не через заголовки)
+        # Это позволяет JavaScript читать _xsrf для CSRF-защиты
+        context.add_cookies(parse_cookies(hh_cookie))
+        page = context.new_page()
 
         # Открываем страницу резюме
         print("Открываю hh.ru...")
@@ -158,16 +182,23 @@ def main():
                 js = """
                 async (ep) => {
                     try {
+                        // Читаем _xsrf из куки для CSRF-защиты
+                        const xsrf = document.cookie.split(';')
+                            .map(c => c.trim())
+                            .find(c => c.startsWith('_xsrf='));
+                        const xsrfVal = xsrf ? xsrf.split('=')[1] : '';
+
                         const r = await fetch(ep, {
                             method: 'POST',
                             credentials: 'include',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded',
-                                'X-Requested-With': 'XMLHttpRequest'
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-XSRFToken': xsrfVal
                             }
                         });
                         const text = await r.text();
-                        return { status: r.status, url: r.url, body: text.slice(0, 200) };
+                        return { status: r.status, xsrf: xsrfVal.slice(0,20), body: text.slice(0, 100) };
                     } catch(e) { return { error: e.message }; }
                 }
                 """
