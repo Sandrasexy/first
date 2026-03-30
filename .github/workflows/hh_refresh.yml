@@ -1,0 +1,33 @@
+name: Поднятие резюме на hh.ru
+
+on:
+  schedule:
+    # Каждые 4 часа (UTC). В московском времени: 03:00, 07:00, 11:00, 15:00, 19:00, 23:00
+    - cron: "0 0,4,8,12,16,20 * * *"
+  workflow_dispatch:  # Позволяет запустить вручную из интерфейса GitHub
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Скачать код репозитория
+        uses: actions/checkout@v4
+
+      - name: Установить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt
+
+      - name: Поднять резюме
+        env:
+          HH_CLIENT_ID: ${{ secrets.HH_CLIENT_ID }}
+          HH_CLIENT_SECRET: ${{ secrets.HH_CLIENT_SECRET }}
+          HH_ACCESS_TOKEN: ${{ secrets.HH_ACCESS_TOKEN }}
+          HH_REFRESH_TOKEN: ${{ secrets.HH_REFRESH_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python refresh_resume.py
