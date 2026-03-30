@@ -27,8 +27,7 @@ jobs:
 
       - name: Поднять резюме
         env:
-          HH_EMAIL: ${{ secrets.HH_EMAIL }}
-          HH_PASSWORD: ${{ secrets.HH_PASSWORD }}
+          HH_COOKIE: ${{ secrets.HH_COOKIE }}
         run: python refresh_resume.py
 
       - name: Сохранить скриншот для отладки
