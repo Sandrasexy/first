@@ -103,22 +103,31 @@ def main():
         for i, button in enumerate(raise_buttons, 1):
             try:
                 button_text = button.inner_text().strip()
-                print(f"Нажимаю кнопку {i}: «{button_text}»")
-                # JavaScript-клик обходит ограничения viewport
-                button.evaluate("el => el.click()")
-                time.sleep(2)
-                # Закрываем модальное окно подтверждения если появилось
-                try:
-                    confirm = page.query_selector(
-                        "button[data-qa='resume-raise-confirm'], "
-                        "button:has-text('Поднять'), "
-                        "[data-qa='modal-confirm-button']"
-                    )
-                    if confirm and confirm.is_visible():
-                        confirm.evaluate("el => el.click()")
-                        time.sleep(1)
-                except Exception:
-                    pass
+                href = button.get_attribute("href") or ""
+                print(f"Нажимаю кнопку {i}: «{button_text}» href={href}")
+
+                # Если это ссылка с href — переходим напрямую
+                if href and href.startswith("/"):
+                    page.goto(f"https://hh.ru{href}", wait_until="domcontentloaded")
+                    time.sleep(2)
+                elif href and href.startswith("http"):
+                    page.goto(href, wait_until="domcontentloaded")
+                    time.sleep(2)
+                else:
+                    # Принудительный клик (force=True обходит ограничения viewport)
+                    button.scroll_into_view_if_needed()
+                    time.sleep(0.5)
+                    button.click(force=True)
+                    time.sleep(2)
+
+                page.screenshot(path="login_page.png")
+                print(f"  После клика URL: {page.url}")
+
+                # Возвращаемся на страницу резюме если ушли
+                if "/applicant/resumes" not in page.url:
+                    page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
+                    time.sleep(2)
+
                 print("  Поднято успешно")
                 success_count += 1
             except Exception as e:
