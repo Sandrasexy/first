@@ -79,6 +79,8 @@ def main():
             "input[autocomplete='email']",
             "input[autocomplete='username']",
             "input[data-qa='login-input-username']",
+            "input[type='text']",
+            "input:not([type='hidden']):not([type='password']):not([type='submit'])",
         ]
         email_filled = False
         for sel in email_selectors:
