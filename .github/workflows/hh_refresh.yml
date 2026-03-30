@@ -28,7 +28,6 @@ jobs:
       - name: Поднять резюме
         env:
           HH_COOKIE: ${{ secrets.HH_COOKIE }}
-          HH_XSRF: ${{ secrets.HH_XSRF }}
         run: python refresh_resume.py
 
       - name: Сохранить скриншот для отладки

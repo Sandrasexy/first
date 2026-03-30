@@ -19,8 +19,8 @@ def get_env(name: str) -> str:
 
 
 def main():
+    # Полная строка Cookie-заголовка из браузера (Network → Request Headers → cookie)
     hh_cookie = get_env("HH_COOKIE")
-    hh_xsrf = get_env("HH_XSRF")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -31,15 +31,9 @@ def main():
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
             viewport={"width": 1280, "height": 800},
+            # Передаём весь Cookie-заголовок как есть
+            extra_http_headers={"Cookie": hh_cookie},
         )
-
-        # Устанавливаем куки сессии (оба варианта домена)
-        context.add_cookies([
-            {"name": "_zzatgib-w-hh", "value": hh_cookie, "domain": "hh.ru", "path": "/"},
-            {"name": "_zzatgib-w-hh", "value": hh_cookie, "domain": ".hh.ru", "path": "/"},
-            {"name": "_xsrf", "value": hh_xsrf, "domain": "hh.ru", "path": "/"},
-            {"name": "_xsrf", "value": hh_xsrf, "domain": ".hh.ru", "path": "/"},
-        ])
 
         page = context.new_page()
 
