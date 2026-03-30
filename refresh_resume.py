@@ -59,12 +59,14 @@ def main():
 
         print("Сессия активна!")
 
-        # Ищем кнопки поднятия резюме
+        # Ищем ссылки/кнопки поднятия резюме по тексту и data-qa
         raise_buttons = page.query_selector_all(
-            "button[data-qa='resume-raise-button'], "
-            "button[data-qa='resume-update-button'], "
-            "[data-qa*='raise'], "
-            "[data-qa*='update-date']"
+            "a:has-text('Поднять в поиске'), "
+            "button:has-text('Поднять в поиске'), "
+            "a:has-text('Поднять резюме'), "
+            "button:has-text('Поднять резюме'), "
+            "[data-qa='resume-raise-button'], "
+            "[data-qa='resume-update-button']"
         )
 
         if not raise_buttons:
@@ -80,12 +82,14 @@ def main():
                 print(f"Нажимаю кнопку {i}: «{button_text}»")
                 button.click()
                 time.sleep(2)
+                # Закрываем модальное окно подтверждения если появилось
                 try:
                     confirm = page.query_selector(
                         "button[data-qa='resume-raise-confirm'], "
+                        "button:has-text('Поднять'), "
                         "[data-qa='modal-confirm-button']"
                     )
-                    if confirm:
+                    if confirm and confirm.is_visible():
                         confirm.click()
                         time.sleep(1)
                 except Exception:
