@@ -58,34 +58,26 @@ def main():
 
         print("Сессия активна!")
 
-        # Закрываем попап «Резюме стали компактнее» если появился
-        # Сначала пробуем Escape
-        page.keyboard.press("Escape")
-        time.sleep(1)
-
-        # Затем ищем любую кнопку закрытия попапа
-        close_selectors = [
-            "button:has-text('Понятно')",
-            "button:has-text('Закрыть')",
-            "[aria-label='Закрыть']",
-            "button[data-qa='modal-close']",
-            "button.bloko-modal-close",
-            # крестик × в правом верхнем углу попапа
-            "svg[aria-label='close']",
-            "[class*='close']",
-            "[class*='modal'] button",
-        ]
-        for selector in close_selectors:
-            try:
-                els = page.query_selector_all(selector)
-                for el in els:
-                    if el.is_visible():
-                        el.evaluate("el => el.click()")
-                        print(f"  Закрыт попап (селектор: {selector})")
-                        time.sleep(1)
-                        break
-            except Exception:
-                pass
+        # Закрываем попап «Резюме стали компактнее» если появился.
+        # Ищем через JS — надёжнее любых CSS-селекторов.
+        closed = page.evaluate("""
+            () => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const ok = buttons.find(b =>
+                    b.textContent.trim() === 'Понятно' ||
+                    b.textContent.trim() === 'Закрыть' ||
+                    b.textContent.trim() === 'OK'
+                );
+                if (ok) { ok.click(); return true; }
+                return false;
+            }
+        """)
+        if closed:
+            print("  Попап закрыт")
+            time.sleep(1)
+        else:
+            page.keyboard.press("Escape")
+            time.sleep(1)
 
         page.screenshot(path="login_page.png")
         print("Скриншот после закрытия попапа сохранён")
