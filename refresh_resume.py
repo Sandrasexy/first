@@ -104,20 +104,19 @@ def main():
             try:
                 button_text = button.inner_text().strip()
                 href = button.get_attribute("href") or ""
-                print(f"Нажимаю кнопку {i}: «{button_text}» href={href}")
+                outer_html = button.evaluate("el => el.outerHTML")
+                print(f"Кнопка {i}: «{button_text}»")
+                print(f"  href={href}")
+                print(f"  html={outer_html[:300]}")
 
-                # Если это ссылка с href — переходим напрямую
-                if href and href.startswith("/"):
-                    page.goto(f"https://hh.ru{href}", wait_until="domcontentloaded")
-                    time.sleep(2)
-                elif href and href.startswith("http"):
-                    page.goto(href, wait_until="domcontentloaded")
+                # Если есть href — идём напрямую
+                if href and (href.startswith("/") or href.startswith("http")):
+                    url = f"https://hh.ru{href}" if href.startswith("/") else href
+                    page.goto(url, wait_until="domcontentloaded")
                     time.sleep(2)
                 else:
-                    # Принудительный клик (force=True обходит ограничения viewport)
-                    button.scroll_into_view_if_needed()
-                    time.sleep(0.5)
-                    button.click(force=True)
+                    # Диспатчим MouseEvent с bubbles=true — запускает JS-обработчики
+                    button.dispatch_event("click")
                     time.sleep(2)
 
                 page.screenshot(path="login_page.png")
@@ -128,7 +127,7 @@ def main():
                     page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
                     time.sleep(2)
 
-                print("  Поднято успешно")
+                print("  Готово")
                 success_count += 1
             except Exception as e:
                 print(f"  Ошибка: {e}")
