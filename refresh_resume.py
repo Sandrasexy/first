@@ -116,73 +116,67 @@ def main():
 
         print()
 
-        # ── Поднимаем резюме через перехват AJAX-запроса ─────────────────
-        raise_buttons = page.query_selector_all("[data-qa='resume-update-button']")
+        # ── Поднимаем резюме через прямой API-запрос ─────────────────────
+        # Находим ID всех резюме со страницы
+        resume_ids = page.evaluate("""
+            () => {
+                const ids = [];
+                // Ищем ссылки вида /resume/XXXXX
+                document.querySelectorAll('a[href*="/resume/"]').forEach(a => {
+                    const m = a.href.match(/\\/resume\\/([a-z0-9]+)/i);
+                    if (m && !ids.includes(m[1])) ids.push(m[1]);
+                });
+                return ids;
+            }
+        """)
+        print(f"Найдены ID резюме: {resume_ids}")
 
+        # Проверяем xsrf-токен
+        xsrf = page.evaluate("() => document.cookie")
+        print(f"Куки на странице: {xsrf[:200]}")
+        local_storage = page.evaluate("() => JSON.stringify(Object.fromEntries(Object.entries(localStorage)))")
+        print(f"localStorage: {local_storage[:300]}")
+
+        raise_buttons = page.query_selector_all("[data-qa='resume-update-button']")
         if not raise_buttons:
-            print("Кнопок «Поднять в поиске» не найдено — резюме уже подняты или недоступны.")
+            print("Кнопок «Поднять в поиске» не найдено.")
             page.screenshot(path="login_page.png")
             browser.close()
             return
 
-        print(f"Найдено кнопок для поднятия: {len(raise_buttons)}")
+        print(f"\nНайдено кнопок для поднятия: {len(raise_buttons)}")
+
+        # Пробуем API-запросы с разными endpoint'ами
         success = 0
-
-        for i, btn in enumerate(raise_buttons, 1):
-            print(f"  Кнопка {i}: кликаю и слушаю запросы...")
-            captured = []
-
-            def on_request(req):
-                if req.method in ("POST", "PUT") and "hh.ru" in req.url:
-                    captured.append({"method": req.method, "url": req.url})
-                    print(f"    → {req.method} {req.url}")
-
-            page.on("request", on_request)
-
-            btn.scroll_into_view_if_needed()
-            time.sleep(0.3)
-            box = btn.bounding_box()
-            if box:
-                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-            else:
-                btn.dispatch_event("click")
-            time.sleep(3)
-
-            page.remove_listener("request", on_request)
-
-            if captured:
-                print(f"    Перехвачено запросов: {len(captured)}")
-            else:
-                print("    Запросов после клика не было — пробуем прямой API вызов")
-                # Пробуем поднять через API напрямую
-                # Получаем resume_id из data-qa или ссылки на странице
-                resume_id = btn.evaluate("""el => {
-                    const card = el.closest('[data-qa*="resume"]') || el.closest('[class*="resume"]');
-                    if (!card) return null;
-                    const link = card.querySelector('a[href*="/resume/"]');
-                    if (link) {
-                        const m = link.href.match(/resume\\/([^?#]+)/);
-                        return m ? m[1] : null;
-                    }
-                    return null;
-                }""")
-                print(f"    resume_id={resume_id}")
-
-                if resume_id:
-                    result = page.evaluate(f"""async () => {{
-                        const r = await fetch('/applicant/resumes/touch', {{
+        for resume_id in resume_ids:
+            endpoints = [
+                f"/applicant/resumes/touch?resume={resume_id}",
+                f"/resume/{resume_id}/touch",
+                f"/applicant/resume/{resume_id}/publish",
+            ]
+            for ep in endpoints:
+                result = page.evaluate(f"""async () => {{
+                    try {{
+                        const r = await fetch('{ep}', {{
                             method: 'POST',
-                            headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
-                            body: 'resume={resume_id}'
+                            credentials: 'include',
+                            headers: {{
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }}
                         }});
-                        return {{ status: r.status, url: r.url }};
-                    }}""")
-                    print(f"    API ответ: {result}")
-
-            success += 1
+                        const text = await r.text();
+                        return {{ status: r.status, url: r.url, body: text.slice(0, 200) }};
+                    }} catch(e) {{ return {{ error: e.message }}};
+                }}""")
+                print(f"  {ep} → {result}")
+                if isinstance(result, dict) and result.get("status") in (200, 204):
+                    print(f"  Поднято резюме {resume_id}!")
+                    success += 1
+                    break
 
         page.screenshot(path="login_page.png")
-        print(f"\nГотово! Обработано резюме: {success}")
+        print(f"\nОбработано: {success}")
         browser.close()
 
 
