@@ -75,11 +75,13 @@ def main():
 
         print(f"Найдено кнопок для поднятия: {len(raise_buttons)}")
 
+        success_count = 0
         for i, button in enumerate(raise_buttons, 1):
             try:
                 button_text = button.inner_text().strip()
                 print(f"Нажимаю кнопку {i}: «{button_text}»")
-                button.click()
+                # JavaScript-клик обходит ограничения viewport
+                button.evaluate("el => el.click()")
                 time.sleep(2)
                 # Закрываем модальное окно подтверждения если появилось
                 try:
@@ -89,15 +91,20 @@ def main():
                         "[data-qa='modal-confirm-button']"
                     )
                     if confirm and confirm.is_visible():
-                        confirm.click()
+                        confirm.evaluate("el => el.click()")
                         time.sleep(1)
                 except Exception:
                     pass
                 print("  Поднято успешно")
+                success_count += 1
             except Exception as e:
                 print(f"  Ошибка: {e}")
 
-        print("\nГотово! Все резюме подняты.")
+        if success_count > 0:
+            print(f"\nГотово! Поднято резюме: {success_count}")
+        else:
+            print("\nНи одно резюме не удалось поднять.")
+            sys.exit(1)
         browser.close()
 
 
