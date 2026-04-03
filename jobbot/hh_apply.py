@@ -73,8 +73,37 @@ def apply_to_vacancy(page, vacancy_url: str, resume_id: str,
         btn = (
             page.query_selector("[data-qa='vacancy-response-link-top']")
             or page.query_selector("[data-qa='vacancy-response-link']")
+            or page.query_selector("[data-qa='vacancy-response-link-bottom']")
+            or page.query_selector("a[data-qa*='response-link']")
+            or page.query_selector("button[data-qa*='response-link']")
         )
+
+        # Запасной вариант: ищем по тексту кнопки через JS
         if not btn:
+            try:
+                handle = page.evaluate_handle("""() => {
+                    const els = document.querySelectorAll('a, button, [role="button"]');
+                    for (const el of els) {
+                        const t = (el.innerText || el.textContent || '').trim();
+                        if (t === 'Откликнуться' || t.startsWith('Откликнуться ')) {
+                            return el;
+                        }
+                    }
+                    return null;
+                }""")
+                element = handle.as_element()
+                if element and element.is_visible():
+                    btn = element
+            except Exception:
+                pass
+
+        if not btn:
+            # Скриншот для отладки
+            try:
+                vac_id = vacancy_url.rstrip("/").split("/")[-1]
+                page.screenshot(path=f"no_button_{vac_id}.png", full_page=True)
+            except Exception:
+                pass
             return "no_button"
 
         btn.click()

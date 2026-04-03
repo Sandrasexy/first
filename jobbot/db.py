@@ -125,14 +125,18 @@ def get_vacancies_without_cover() -> list:
 
 
 def get_pending_applications() -> list:
-    """Вакансии с готовым сопроводительным письмом, на которые ещё не откликались."""
+    """Вакансии с одобренными письмами, на которые ещё не откликались (или были ошибки)."""
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT v.*, c.text AS cover_text, c.id AS cover_id
                FROM vacancies v
                JOIN covers c ON c.vacancy_id = v.id
-               LEFT JOIN applications a ON a.vacancy_id = v.id
-               WHERE a.id IS NULL
+               WHERE c.status = 'approved'
+               AND NOT EXISTS (
+                   SELECT 1 FROM applications aa
+                   WHERE aa.vacancy_id = v.id
+                   AND aa.status IN ('applied', 'already_applied')
+               )
                ORDER BY v.created_at DESC""",
         ).fetchall()
         return [dict(r) for r in rows]
