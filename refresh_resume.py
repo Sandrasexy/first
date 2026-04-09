@@ -94,7 +94,7 @@ def main():
             )
 
         if not raise_buttons:
-            # Ищем по тексту через JS
+            # Ищем по тексту через JS (ищем <a> и <button>)
             handles = page.evaluate_handle("""() => {
                 return Array.from(document.querySelectorAll('button, a'))
                     .filter(el => {
