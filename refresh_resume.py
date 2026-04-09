@@ -82,6 +82,7 @@ def main():
         if not raise_buttons:
             print("Кнопки поднятия не найдены.")
             print("Возможно, резюме уже были подняты недавно или изменился интерфейс hh.ru.")
+            page.screenshot(path="debug_no_buttons.png", full_page=True)
             browser.close()
             return
 
