@@ -1,0 +1,39 @@
+name: Jobbot — поиск вакансий и генерация писем
+
+on:
+  schedule:
+    # 3 раза в день по Москве: 9:00, 14:00, 19:00 (UTC: 6:00, 11:00, 16:00)
+    - cron: "0 6,11,16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  enrich:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Скачать код репозитория
+        uses: actions/checkout@v4
+
+      - name: Установить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Установить зависимости
+        run: pip install -r jobbot/requirements.txt
+
+      - name: Запустить пайплайн обогащения
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: cd jobbot && python pipeline_enrich.py
+
+      - name: Сохранить обновлённую базу данных
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add jobbot/data/jobbot.db
+          git diff --staged --quiet || git commit -m "chore: обновление базы вакансий [skip ci]"
+          git push
