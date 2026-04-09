@@ -2,13 +2,14 @@ name: Поднятие резюме на hh.ru
 
 on:
   schedule:
-    # Каждые 4 часа (UTC). В московском времени: 03:00, 07:00, 11:00, 15:00, 19:00, 23:00
-    - cron: "0 0,4,8,12,16,20 * * *"
-  workflow_dispatch:  # Позволяет запустить вручную из интерфейса GitHub
+    # Каждые 4 часа в 10 минут (UTC): 0:10, 4:10, 8:10, 12:10, 16:10, 20:10
+    # По Москве (UTC+3): 3:10, 7:10, 11:10, 15:10, 19:10, 23:10
+    - cron: "10 0,4,8,12,16,20 * * *"
+  workflow_dispatch:
 
 jobs:
   refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Скачать код репозитория
@@ -19,22 +20,33 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Установить зависимости
+      - name: Установить зависимости Python
         run: pip install -r requirements.txt
 
-      - name: Установить браузер Playwright
+      - name: Кэш браузера Playwright
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('requirements.txt') }}
+
+      - name: Установить браузер Playwright (только если нет в кэше)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: playwright install chromium --with-deps
+
+      - name: Установить системные зависимости (браузер из кэша)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
 
       - name: Поднять резюме
         env:
-          HH_EMAIL: ${{ secrets.HH_EMAIL }}
-          HH_PASSWORD: ${{ secrets.HH_PASSWORD }}
+          HH_COOKIE: ${{ secrets.HH_COOKIE }}
         run: python refresh_resume.py
 
       - name: Сохранить скриншот для отладки
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-screenshot
+          name: debug-screenshots
           path: "debug_*.png"
           if-no-files-found: ignore
