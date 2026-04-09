@@ -110,9 +110,9 @@ def main():
             )
 
         if not raise_buttons:
-            # Ищем по тексту через locator
+            # Ищем по тексту через get_by_text (самый надёжный способ)
             for text in ["Поднять в поиске", "Обновить дату"]:
-                found = page.locator(f"a:text-is('{text}'), button:text-is('{text}')").all()
+                found = page.get_by_text(text, exact=True).all()
                 if found:
                     raise_buttons = found
                     break
