@@ -38,6 +38,52 @@ def parse_cookies(cookie_string: str) -> list:
     return cookies
 
 
+def _close_modal(page):
+    """Закрывает модальное окно если оно открыто."""
+    try:
+        # Ждём немного чтобы модалка успела появиться
+        time.sleep(0.5)
+        overlay = page.query_selector("[data-qa='modal-overlay']")
+        if not overlay:
+            return
+
+        print("  Обнаружена модалка — закрываю...")
+
+        # Вариант 1: кнопка закрытия внутри модалки
+        closed = page.evaluate("""() => {
+            const modal = document.querySelector('[data-qa="modal-overlay"]');
+            if (!modal) return false;
+            // Ищем кнопку закрытия
+            const closeBtn = modal.querySelector(
+                'button[data-qa*="close"], button[aria-label*="закрыть"], ' +
+                'button[aria-label*="Close"], [data-qa*="modal-close"]'
+            );
+            if (closeBtn) { closeBtn.click(); return true; }
+            // Ищем любую кнопку с текстом "Понятно", "Закрыть", "OK"
+            const btns = Array.from(modal.querySelectorAll('button'));
+            const ok = btns.find(b =>
+                ['Понятно', 'Закрыть', 'OK', 'Хорошо', 'Продолжить'].includes(b.textContent.trim())
+            );
+            if (ok) { ok.click(); return true; }
+            return false;
+        }""")
+
+        if not closed:
+            # Вариант 2: Escape
+            page.keyboard.press("Escape")
+
+        time.sleep(1)
+
+        # Проверяем что модалка закрылась
+        if page.query_selector("[data-qa='modal-overlay']"):
+            # Вариант 3: клик вне модалки (в угол страницы)
+            page.mouse.click(10, 10)
+            time.sleep(0.5)
+
+    except Exception as e:
+        print(f"  Не удалось закрыть модалку: {e}")
+
+
 def main():
     hh_cookie = get_env("HH_COOKIE")
 
@@ -98,24 +144,16 @@ def main():
         }""")
         print(f"Тексты кнопок/ссылок с 'Поднять'/'Обновить': {raise_texts}")
 
-        # Ищем кнопки поднятия по нескольким селекторам
+        # Ищем кнопки поднятия — без уточнения тега (могут быть <a> или <button>)
         raise_buttons = page.query_selector_all(
-            "button[data-qa='resume-raise-button'], "
-            "button[data-qa='resume-update-button']"
+            "[data-qa='resume-raise-button'], "
+            "[data-qa='resume-update-button']"
         )
 
         if not raise_buttons:
             raise_buttons = page.query_selector_all(
                 "[data-qa*='raise'], [data-qa*='update-date']"
             )
-
-        if not raise_buttons:
-            # Ищем по тексту через get_by_text (самый надёжный способ)
-            for text in ["Поднять в поиске", "Обновить дату"]:
-                found = page.get_by_text(text, exact=True).all()
-                if found:
-                    raise_buttons = found
-                    break
 
         if not raise_buttons:
             print("Кнопки поднятия не найдены.")
@@ -133,21 +171,14 @@ def main():
                 button.click()
                 time.sleep(2)
 
-                # Закрываем модальное окно подтверждения если появилось
-                try:
-                    confirm = page.query_selector(
-                        "button[data-qa='resume-raise-confirm'], "
-                        "[data-qa='modal-confirm-button']"
-                    )
-                    if confirm:
-                        confirm.click()
-                        time.sleep(1)
-                except Exception:
-                    pass
+                # Закрываем модальное окно если появилось
+                _close_modal(page)
 
                 print(f"  Поднято успешно")
             except Exception as e:
                 print(f"  Ошибка при нажатии кнопки {i}: {e}")
+                # Пробуем закрыть модалку и продолжить
+                _close_modal(page)
 
         print("\nГотово! Все резюме подняты.")
         page.screenshot(path="debug_success.png", full_page=True)
