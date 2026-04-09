@@ -56,8 +56,8 @@ def main():
 
         # Открываем страницу резюме
         print("Открываю страницу резюме...")
-        page.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded")
-        time.sleep(3)
+        page.goto("https://hh.ru/applicant/resumes", wait_until="networkidle")
+        time.sleep(2)
 
         # Проверяем авторизацию
         page_text = page.inner_text("body")
@@ -82,6 +82,22 @@ def main():
         except Exception:
             pass
 
+        # Отладка: выводим все data-qa атрибуты на странице
+        all_data_qa = page.evaluate("""() => {
+            return Array.from(document.querySelectorAll('[data-qa]'))
+                .map(el => el.getAttribute('data-qa'))
+                .filter(qa => qa && (qa.includes('raise') || qa.includes('resume') || qa.includes('update')));
+        }""")
+        print(f"data-qa атрибуты на странице: {all_data_qa}")
+
+        # Отладка: выводим тексты ссылок и кнопок связанных с поднятием
+        raise_texts = page.evaluate("""() => {
+            return Array.from(document.querySelectorAll('a, button'))
+                .map(el => (el.innerText || el.textContent || '').trim())
+                .filter(t => t.includes('Поднять') || t.includes('Обновить'));
+        }""")
+        print(f"Тексты кнопок/ссылок с 'Поднять'/'Обновить': {raise_texts}")
+
         # Ищем кнопки поднятия по нескольким селекторам
         raise_buttons = page.query_selector_all(
             "button[data-qa='resume-raise-button'], "
@@ -94,22 +110,12 @@ def main():
             )
 
         if not raise_buttons:
-            # Ищем по тексту через JS (ищем <a> и <button>)
-            handles = page.evaluate_handle("""() => {
-                return Array.from(document.querySelectorAll('button, a'))
-                    .filter(el => {
-                        const t = (el.innerText || el.textContent || '').trim();
-                        return t === 'Поднять в поиске' || t === 'Обновить дату';
-                    });
-            }""")
-            try:
-                items = handles.get_properties()
-                raise_buttons = [
-                    v.as_element() for v in items.values()
-                    if v.as_element() is not None
-                ]
-            except Exception:
-                raise_buttons = []
+            # Ищем по тексту через get_by_text (самый надёжный способ)
+            for text in ["Поднять в поиске", "Обновить дату"]:
+                found = page.get_by_text(text, exact=True).all()
+                if found:
+                    raise_buttons = found
+                    break
 
         if not raise_buttons:
             print("Кнопки поднятия не найдены.")
